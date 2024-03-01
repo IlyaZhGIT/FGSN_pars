@@ -22,18 +22,50 @@ STATUSES = {
 class AccreditedPerson:
     type_person: str
     name: str
-    addres: str
+    address: str
 
     full_name: str
     mail: str
     phone: str
 
+    @staticmethod
+    def create_accredited_person(applicant_json) -> "AccreditedPerson":
+        type_id = applicant_json.get("idType") # передать для получаения наименования типа
+        name_type = get_accredited_person_name_type(type_id)
+        shortName = applicant_json.get("shortName")
+        address = applicant_json.get("addresses")[0].get("fullAddress")
+
+        head_person = applicant_json.get("headPerson")
+        full_name = f"{head_person.get("name")} {head_person.get("surname")} {head_person.get("patronymic")}"
+        phone = applicant_json.get("contacts")[0].get("value")
+        mail = applicant_json.get("contacts")[1].get("value")
+
+        return AccreditedPerson(type_person=name_type, name=shortName, address=address, full_name=full_name, mail=mail, phone=phone)
 
 @dataclass
 class Accreditation:
     full_name: str
     confirmation_of_competence: str | None
 
+    @staticmethod
+    def create_application(applicant_json) -> "Accreditation":
+        regNumber = applicant_json.get("regNumbers")[0].get("regNumber")
+
+        inn = applicant_json.get("inn")
+
+        shortName = applicant_json.get("shortName")
+
+        applicant = applicant_json.get('applicant')
+        person = applicant.get('person')
+        full_name = f"{person.get("name")} {person.get("surname")} {person.get("patronymic")}"
+
+        contacts = applicant.get("contacts")
+        phone = contacts[0].get("value")
+        mail = contacts[2].get("value")
+
+        addres = applicant.get("addresses")[0].get("fullAddress")
+        
+        return Applicant(ral=regNumber, inn=inn, applicant=shortName, full_name=full_name,mail=mail, phone=phone, addres=addres, accreditation=accreditation, accredited_person=accredited_person)
 
 @dataclass
 class Applicant:
@@ -49,16 +81,16 @@ class Applicant:
     accredited_person: AccreditedPerson
     accreditation: Accreditation
 
-
 class Applicants_req:
     def __init__(self, limit: int = 10, statuses: list = None) -> None:
         if not stasuses:
-            stasuses = []
+            statuses = []
         self.statuses = statuses
         self.limit = limit
 
-        self.applicants_json = self.get_applicants()
         self.token = Applicants_req.get_token_request()
+        self.applicants_json = self.get_applicants()
+        self.list_applicants_path = self.create_list_applicants()
 
     def get_applicants(self):
         headers["Authorization"] = self.token
@@ -119,79 +151,50 @@ stasuses: list[int] = [
     STATUSES.get("Частично приостановлен"),
 ]
 
+obj = Applicants_req(statuses=stasuses)
 
-# req1 = req("https://pub.fsa.gov.ru/api/v1/ral/common/showcases/get", json_data)
-# pprint(req1)
-
-
-# for applicant in applicants_id:
-#     response = requests.get(
-#         f"https://pub.fsa.gov.ru/api/v1/ral/common/companies/{applicant}",
-#         cookies=cookies,
-#         headers=headers,
-#         timeout=15,
-#     )
-#     res_j = response.json()
+if obj.list_applicants_path.exists():
+    with open(obj.list_applicants_path, "r", encoding="utf-8") as file:
+        applicants_id = json.loads(file).get("applicants_id")
 
 
-#     regNumber = res_j.get("regNumbers")[0].get("regNumber")
+def get_applicant_by_id(id: str):
+    headers["Authorization"] = obj.token
+    response = requests.get(
+        f"https://pub.fsa.gov.ru/api/v1/ral/common/companies/{id}",
+        headers=headers,
+        timeout=15,
+    )
+    return response.json()
 
-#     inn = res_j.get("inn")
+for applicant in applicants_id:
+    applicant_json = get_applicant_by_id(applicant)
+    accredited_person = AccreditedPerson.create_accredited_person(applicant_json)
+    accreditation = Accreditation()
 
-#     shortName = res_j.get("shortName")
+def get_accredited_person_name_type(type_id: int):
+    headers["Authorization"] = obj.token
+    json_data = {
+        "items": {
+            "guApType": [
+                {
+                    "id": [
+                        type_id,
+                    ],
+                    "fields": [
+                        "id",
+                        "masterId",
+                        "name",
+                    ],
+                },
+            ],
+        }
+    }
 
-#     applicant = res_j.get('applicant')
-#     person = applicant.get('person')
-#     full_name = f"{person.get("name")} {person.get("surname")} {person.get("patronymic")}"
-
-#     contacts = applicant.get("contacts")
-#     phone = contacts[0].get("value")
-#     mail = contacts[2].get("value")
-
-#     addres = applicant.get("addresses")[0].get("fullAddress")
-
-
-#     #AccreditedPerson
-#     id_type = res_j.get("idType") # передать для получаения наименования типа
-#     name_type = ...
-#     shortName = res_j.get("shortName")
-#     addres = res_j.get("addresses")[0].get("fullAddress")
-
-#     head_person = res_j.get("headPerson")
-#     full_name = f"{head_person.get("name")} {head_person.get("surname")} {head_person.get("patronymic")}"
-#     phone = res_j.get("contacts")[0].get("value")
-#     mail = res_j.get("contacts")[1].get("value")
-
-#     accredited_person = AccreditedPerson(type_person=name_type, name=shortName, addres=addres, full_name=full_name, mail=mail, phone=phone)
-
-#     accreditation = Accreditation()
-
-#     Applicant(ral=regNumber, inn=inn, applicant=shortName, full_name=full_name,mail=mail, phone=phone, addres=addres, accreditation=accreditation, accredited_person=accredited_person)
+    return requests.post(
+        "https://pub.fsa.gov.ru/nsi/api/multi",
+        headers=headers,
+        json=json_data,
+    )
 
 
-# #Обращение за названием типа по id
-# # json_data = {
-# #     "items": {
-# #         "guApType": [
-# #             {
-# #                 "id": [
-# #                     5,
-# #                 ],
-# #                 "fields": [
-# #                     "id",
-# #                     "masterId",
-# #                     "name",
-# #                 ],
-# #             },
-# #         ],
-# #     }
-# # }
-
-# # response = requests.post(
-# #     "https://pub.fsa.gov.ru/nsi/api/multi",
-# #     cookies=cookies,
-# #     headers=headers,
-# #     json=json_data,
-# # )
-
-# # pprint(response.text)
