@@ -1,9 +1,9 @@
 import json
-from dataclasses import dataclass
 from pathlib import Path
 from pprint import pprint
 
 import requests
+from pydantic import BaseModel
 
 
 STATUSES = {
@@ -18,8 +18,7 @@ headers = {
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 YaBrowser/24.1.0.0 Safari/537.36",
 }
 
-@dataclass
-class AccreditedPerson:
+class AccreditedPerson(BaseModel):
     type_person: str
     name: str
     address: str
@@ -42,27 +41,26 @@ class AccreditedPerson:
 
         return AccreditedPerson(type_person=name_type, name=shortName, address=address, full_name=full_name, mail=mail, phone=phone)
 
-@dataclass
-class Accreditation:
+class Accreditation(BaseModel):
     full_name: str
     confirmation_of_competence: str | None
 
     @staticmethod
     def create_accreditation(applicant_json):
-        last_confirmation = applicant_json.get("confirmCompetenceChanges")[-1]
-        if not last_confirmation: 
+        confirmations = applicant_json.get("confirmCompetenceChanges")
+        if not confirmations: 
             return None
+        last_confirmation = confirmations[-1]
         
         full_name = last_confirmation.get("expertGroup").get("expertFio")
         
         confirmation_id = last_confirmation.get("idResult")
         confirmation_of_competence = get_multi_nsi_by_id("typeResultOfConfirm", confirmation_id)
         
-        return Accreditation(full_name, confirmation_of_competence)
+        return Accreditation(full_name=full_name, confirmation_of_competence=confirmation_of_competence)
         
 
-@dataclass
-class Applicant:
+class Applicant(BaseModel):
     ral: str
     inn: str
     applicant: str
@@ -73,7 +71,7 @@ class Applicant:
     address: str
 
     accredited_person: AccreditedPerson
-    accreditation: Accreditation
+    accreditation: Accreditation | None
     
 
     @staticmethod
@@ -94,6 +92,7 @@ class Applicant:
         mail = contacts[-1].get("value")
         
         return Applicant(ral=reg_number, inn=inn, applicant=short_name, full_name=full_name,mail=mail, phone=phone, address=address, accreditation=accreditation, accredited_person=accredited_person)    
+
 
 def get_applicant_by_id(id: str):
     response = requests.get(
@@ -176,7 +175,7 @@ def main():
     global headers
     headers["Authorization"] = get_token_request(headers)
     
-    limit = 10
+    limit = 3
     statuses: list[int] = [
     STATUSES.get("Действует"),
     STATUSES.get("Приостановлен"),
@@ -197,18 +196,23 @@ def main():
         with open(applicants_file, "r", encoding="utf-8") as file:
             applicants_id = json.load(file).get("applicants_id")
     
-    ap = []
-    for applicant in applicants_id:
-        applicant_json = get_applicant_by_id(applicant)
+    d = {}
+    
+    for applicant_id in applicants_id:
+        applicant_json = get_applicant_by_id(applicant_id)
         
         accredited_person = AccreditedPerson.create_accredited_person(applicant_json)
         
         accreditation = Accreditation.create_accreditation(applicant_json)
         
         applicant = Applicant.create_applicant(applicant_json, accredited_person, accreditation)
-        ap.append(applicant)
         
-    pprint(ap)
-
+        serialized_applicant = applicant.model_dump()
+        d[applicant_id] = serialized_applicant
+    
+    write_json(d, "dirt_data")
+    
+    print("done!")
+    
 if __name__ == "__main__":
     main()
