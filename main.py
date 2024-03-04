@@ -1,10 +1,13 @@
 import json
 from pathlib import Path
 from pprint import pprint
+from enum import Enum
 
 import requests
 from pydantic import BaseModel
 
+class STATUSES(Enum):
+    pass
 
 STATUSES = {
     "Архивный": 1,
@@ -177,9 +180,9 @@ def main():
     
     limit = 3
     statuses: list[int] = [
-    STATUSES.get("Действует"),
-    STATUSES.get("Приостановлен"),
-    STATUSES.get("Частично приостановлен"),
+        STATUSES.get("Действует"),
+        STATUSES.get("Приостановлен"),
+        STATUSES.get("Частично приостановлен"),
     ]
     
     applicants_json = get_applicants_json(statuses, limit)
